@@ -25,17 +25,15 @@ jobs:
           
           echo "🚀 开始暴力压缩..."
           
-          # 1. 统一尺寸限制 (不区分大小写 -iname)
-          # 只要宽度超过 1920 (1080P标准) 就缩小，大幅减少体积
-          find images -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r mogrify -resize '1920>' 
+          # 1. 统一尺寸限制 (忽略错误继续执行)
+          find images -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r mogrify -resize '1920>' || true
 
-          # 2. JPG 压缩 (质量降到 75，剥离所有元数据)
-          find images -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r jpegoptim -m75 --strip-all
+          # 2. JPG 压缩 (忽略错误继续执行)
+          find images -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r jpegoptim -m75 --strip-all || true
 
-          # 3. PNG 暴力压缩
-          # --quality=50-80: 允许更低的画质以换取体积
-          # --speed 1: 最慢但压缩效果最好
-          find images -type f -iname "*.png" | xargs -r pngquant --quality=50-80 --speed 1 --ext .png --force --skip-if-larger
+          # 3. PNG 暴力压缩 (重点是最后的 || true)
+          # 这会防止因为跳过某张图而导致整个脚本崩溃
+          find images -type f -iname "*.png" | xargs -r pngquant --quality=50-80 --speed 1 --ext .png --force --skip-if-larger || true
 
           echo "🎉 压缩后：最大的 5 张图片体积："
           ls -lhS images | head -n 6
@@ -47,7 +45,7 @@ jobs:
           
           if [[ -n $(git status -s) ]]; then
             git add images/*
-            git commit -m "📉 Force Compress (1920px + Aggressive) [skip ci]"
+            git commit -m "📉 Final Compress (Safe Mode) [skip ci]"
             git push
             echo "✅ 图片已优化并推送到仓库"
           else
