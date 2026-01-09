@@ -2,8 +2,8 @@ name: Compress Images
 on:
   push:
     paths:
-      - 'images/**' # 监听 images 文件夹的变化
-  workflow_dispatch: # 支持手动点按钮触发
+      - 'images/**'  # 👈 1. 这里配置你的文件夹名字
+  workflow_dispatch: # 允许手动点按钮运行
 
 jobs:
   build:
@@ -16,13 +16,11 @@ jobs:
       - name: Compress Images
         uses: calibreapp/image-actions@main
         with:
-          # Token 自动生成，不需要你配置
+          # 👈 2. 这里直接用系统自带的 Token，不用你去 Secrets 里配
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          # 压缩参数：开启 PNG 和 JPG 的压缩
-          # 质量设为 80 可以在几乎看不出区别的情况下大幅减小体积
+          # 压缩质量 (80 是性价比最高的，肉眼无损，体积减半)
           jpegQuality: "80"
           pngQuality: "80"
           webpQuality: "80"
-          # ⚠️ 关键点：不要转换格式，只压缩体积！
-          # 如果把 png 转 jpg，Notion 里的链接就失效了。
+          # 不改格式，只压体积，保证 Notion 链接不失效
           ignorePaths: "node_modules/**"
