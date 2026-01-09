@@ -2,11 +2,11 @@ name: Compress Images
 on:
   push:
     paths:
-      - 'images/**'  # 监听 images 文件夹
-  workflow_dispatch: # 支持手动触发
+      - 'images/**'
+  workflow_dispatch:
 
 permissions:
-  contents: write # ⚠️ 必须给写权限，否则无法提交压缩后的图片
+  contents: write
 
 jobs:
   compress:
@@ -15,29 +15,38 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      # 1. 安装压缩工具 (Linux 原生工具，速度极快)
+      # 1. 安装更强的工具: pngquant (压PNG神器) 和 imagemagick (缩放神器)
       - name: Install Tools
-        run: sudo apt-get update && sudo apt-get install -y jpegoptim optipng
+        run: sudo apt-get update && sudo apt-get install -y jpegoptim pngquant imagemagick
 
-      # 2. 执行压缩 (只压缩 images 目录)
+      # 2. 执行压缩
       - name: Compress Images
         run: |
-          # 压缩 JPG (质量80%, 剥离元数据)
-          find images -name '*.jpg' -o -name '*.jpeg' | xargs -r jpegoptim -m80 --strip-all
+          echo "🚀 Starting compression..."
           
-          # 压缩 PNG (优化级别 2)
-          find images -name '*.png' | xargs -r optipng -o2
+          # --- 步骤 A: 先把超大的图片缩小 (限制最大宽度 2560px) ---
+          # 这一步能瞬间把 27MB 的图变小很多，防止后面卡死
+          # 只处理宽度大于 2560 的图，小的图不动
+          find images -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' | xargs -r mogrify -resize '2560>' 
 
-      # 3. 提交更改 (如果图片变小了，就提交回去)
+          # --- 步骤 B: 有损压缩 JPG (质量 80%) ---
+          find images -name '*.jpg' -o -name '*.jpeg' | xargs -r jpegoptim -m80 --strip-all
+
+          # --- 步骤 C: 有损压缩 PNG (质量 60-80%, 速度飞快) ---
+          # --force: 强制覆盖
+          # --ext .png: 保持后缀不变
+          # --skip-if-larger: 如果压完反而变大(极少见)就跳过
+          find images -name '*.png' | xargs -r pngquant --quality=60-80 --ext .png --force --skip-if-larger
+
+      # 3. 提交更改
       - name: Commit & Push changes
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           
-          # 检查是否有文件被修改
           if [[ -n $(git status -s) ]]; then
             git add images/*
-            git commit -m "📉 Auto Compress Images [skip ci]"
+            git commit -m "📉 Auto Compress (Resize+Pngquant) [skip ci]"
             git push
             echo "✅ Images compressed and pushed."
           else
