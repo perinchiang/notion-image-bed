@@ -8,9 +8,7 @@ on:
 permissions:
   contents: write
 
-# ⚡️ 新增功能：防拥堵机制
-# 如果有新的图片上传，自动取消正在运行的旧压缩任务
-# 这样最后一个任务会一次性压缩所有堆积的图片，既省资源又防冲突
+# ⚡️ 防拥堵机制
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,21 +20,26 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 拉取完整历史，方便 rebase
+          fetch-depth: 0
 
       - name: Install Tools
         run: sudo apt-get update && sudo apt-get install -y jpegoptim pngquant imagemagick
 
       - name: Compress Images
         run: |
-          # 1. 统一尺寸限制 (忽略错误继续执行)
-          find images -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r mogrify -resize '1920>' || true
+          echo "🛡️ 启动智能安全压缩..."
 
-          # 2. JPG 压缩
-          find images -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r jpegoptim -m75 --strip-all || true
+          # 1. 调整超大图片尺寸 (安全锁：只有 >2MB 的图才缩放，防止长图被压废)
+          # 限制最大边长为 2560px (2K)
+          find images -type f -size +2M \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r mogrify -resize '2560>' || true
 
-          # 3. PNG 暴力压缩
-          find images -type f -iname "*.png" | xargs -r pngquant --quality=50-80 --speed 1 --ext .png --force --skip-if-larger || true
+          # 2. JPG 压缩 (安全锁：只有 >100KB 才压)
+          # 质量提升到 85，保证清晰度
+          find images -type f -size +100k \( -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r jpegoptim -m85 --strip-all || true
+
+          # 3. PNG 压缩 (安全锁：只有 >100KB 才压)
+          # 质量提升到 70-90，防止小图标损坏
+          find images -type f -size +100k -iname "*.png" | xargs -r pngquant --quality=70-90 --speed 1 --ext .png --force --skip-if-larger || true
 
       - name: Commit & Push changes
         run: |
@@ -45,10 +48,9 @@ jobs:
           
           if [[ -n $(git status -s) ]]; then
             git add images/*
-            git commit -m "📉 Auto Compress (Batch) [skip ci]"
+            git commit -m "📉 Smart Compress (>100kb) [skip ci]"
             
             # 🔄 强力抗冲突重试循环
-            # 尝试 5 次：拉取最新代码 -> 变基 -> 推送
             n=0
             until [ "$n" -ge 5 ]
             do
