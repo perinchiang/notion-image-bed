@@ -15,30 +15,31 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      # 1. 安装更强的工具: pngquant (压PNG神器) 和 imagemagick (缩放神器)
       - name: Install Tools
         run: sudo apt-get update && sudo apt-get install -y jpegoptim pngquant imagemagick
 
-      # 2. 执行压缩
       - name: Compress Images
         run: |
-          echo "🚀 Starting compression..."
+          echo "📊 压缩前：最大的 5 张图片体积："
+          ls -lhS images | head -n 6
           
-          # --- 步骤 A: 先把超大的图片缩小 (限制最大宽度 2560px) ---
-          # 这一步能瞬间把 27MB 的图变小很多，防止后面卡死
-          # 只处理宽度大于 2560 的图，小的图不动
-          find images -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' | xargs -r mogrify -resize '2560>' 
+          echo "🚀 开始暴力压缩..."
+          
+          # 1. 统一尺寸限制 (不区分大小写 -iname)
+          # 只要宽度超过 1920 (1080P标准) 就缩小，大幅减少体积
+          find images -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r mogrify -resize '1920>' 
 
-          # --- 步骤 B: 有损压缩 JPG (质量 80%) ---
-          find images -name '*.jpg' -o -name '*.jpeg' | xargs -r jpegoptim -m80 --strip-all
+          # 2. JPG 压缩 (质量降到 75，剥离所有元数据)
+          find images -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r jpegoptim -m75 --strip-all
 
-          # --- 步骤 C: 有损压缩 PNG (质量 60-80%, 速度飞快) ---
-          # --force: 强制覆盖
-          # --ext .png: 保持后缀不变
-          # --skip-if-larger: 如果压完反而变大(极少见)就跳过
-          find images -name '*.png' | xargs -r pngquant --quality=60-80 --ext .png --force --skip-if-larger
+          # 3. PNG 暴力压缩
+          # --quality=50-80: 允许更低的画质以换取体积
+          # --speed 1: 最慢但压缩效果最好
+          find images -type f -iname "*.png" | xargs -r pngquant --quality=50-80 --speed 1 --ext .png --force --skip-if-larger
 
-      # 3. 提交更改
+          echo "🎉 压缩后：最大的 5 张图片体积："
+          ls -lhS images | head -n 6
+
       - name: Commit & Push changes
         run: |
           git config --global user.name "GitHub Action"
@@ -46,9 +47,9 @@ jobs:
           
           if [[ -n $(git status -s) ]]; then
             git add images/*
-            git commit -m "📉 Auto Compress (Resize+Pngquant) [skip ci]"
+            git commit -m "📉 Force Compress (1920px + Aggressive) [skip ci]"
             git push
-            echo "✅ Images compressed and pushed."
+            echo "✅ 图片已优化并推送到仓库"
           else
-            echo "✨ No images needed compression."
+            echo "✨ 没有发现可以进一步压缩的图片"
           fi
