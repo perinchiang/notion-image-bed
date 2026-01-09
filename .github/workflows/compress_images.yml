@@ -8,35 +8,35 @@ on:
 permissions:
   contents: write
 
+# ⚡️ 新增功能：防拥堵机制
+# 如果有新的图片上传，自动取消正在运行的旧压缩任务
+# 这样最后一个任务会一次性压缩所有堆积的图片，既省资源又防冲突
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   compress:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 拉取完整历史，方便 rebase
 
       - name: Install Tools
         run: sudo apt-get update && sudo apt-get install -y jpegoptim pngquant imagemagick
 
       - name: Compress Images
         run: |
-          echo "📊 压缩前：最大的 5 张图片体积："
-          ls -lhS images | head -n 6
-          
-          echo "🚀 开始暴力压缩..."
-          
           # 1. 统一尺寸限制 (忽略错误继续执行)
           find images -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r mogrify -resize '1920>' || true
 
-          # 2. JPG 压缩 (忽略错误继续执行)
+          # 2. JPG 压缩
           find images -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) | xargs -r jpegoptim -m75 --strip-all || true
 
-          # 3. PNG 暴力压缩 (重点是最后的 || true)
-          # 这会防止因为跳过某张图而导致整个脚本崩溃
+          # 3. PNG 暴力压缩
           find images -type f -iname "*.png" | xargs -r pngquant --quality=50-80 --speed 1 --ext .png --force --skip-if-larger || true
-
-          echo "🎉 压缩后：最大的 5 张图片体积："
-          ls -lhS images | head -n 6
 
       - name: Commit & Push changes
         run: |
@@ -45,9 +45,18 @@ jobs:
           
           if [[ -n $(git status -s) ]]; then
             git add images/*
-            git commit -m "📉 Final Compress (Safe Mode) [skip ci]"
-            git push
-            echo "✅ 图片已优化并推送到仓库"
+            git commit -m "📉 Auto Compress (Batch) [skip ci]"
+            
+            # 🔄 强力抗冲突重试循环
+            # 尝试 5 次：拉取最新代码 -> 变基 -> 推送
+            n=0
+            until [ "$n" -ge 5 ]
+            do
+               git pull --rebase origin main && git push && break
+               n=$((n+1))
+               echo "⚠️ Push failed, retrying in 5s... ($n/5)"
+               sleep 5
+            done
           else
-            echo "✨ 没有发现可以进一步压缩的图片"
+            echo "✨ 没有发现需要更新的图片"
           fi
