@@ -1,0 +1,28 @@
+name: Compress Images
+on:
+  push:
+    paths:
+      - 'images/**' # 监听 images 文件夹的变化
+  workflow_dispatch: # 支持手动点按钮触发
+
+jobs:
+  build:
+    name: calibreapp/image-actions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Compress Images
+        uses: calibreapp/image-actions@main
+        with:
+          # Token 自动生成，不需要你配置
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          # 压缩参数：开启 PNG 和 JPG 的压缩
+          # 质量设为 80 可以在几乎看不出区别的情况下大幅减小体积
+          jpegQuality: "80"
+          pngQuality: "80"
+          webpQuality: "80"
+          # ⚠️ 关键点：不要转换格式，只压缩体积！
+          # 如果把 png 转 jpg，Notion 里的链接就失效了。
+          ignorePaths: "node_modules/**"
