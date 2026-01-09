@@ -2,25 +2,44 @@ name: Compress Images
 on:
   push:
     paths:
-      - 'images/**'  # 👈 1. 这里配置你的文件夹名字
-  workflow_dispatch: # 允许手动点按钮运行
+      - 'images/**'  # 监听 images 文件夹
+  workflow_dispatch: # 支持手动触发
+
+permissions:
+  contents: write # ⚠️ 必须给写权限，否则无法提交压缩后的图片
 
 jobs:
-  build:
-    name: calibreapp/image-actions
+  compress:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
+      # 1. 安装压缩工具 (Linux 原生工具，速度极快)
+      - name: Install Tools
+        run: sudo apt-get update && sudo apt-get install -y jpegoptim optipng
+
+      # 2. 执行压缩 (只压缩 images 目录)
       - name: Compress Images
-        uses: calibreapp/image-actions@main
-        with:
-          # 👈 2. 这里直接用系统自带的 Token，不用你去 Secrets 里配
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          # 压缩质量 (80 是性价比最高的，肉眼无损，体积减半)
-          jpegQuality: "80"
-          pngQuality: "80"
-          webpQuality: "80"
-          # 不改格式，只压体积，保证 Notion 链接不失效
-          ignorePaths: "node_modules/**"
+        run: |
+          # 压缩 JPG (质量80%, 剥离元数据)
+          find images -name '*.jpg' -o -name '*.jpeg' | xargs -r jpegoptim -m80 --strip-all
+          
+          # 压缩 PNG (优化级别 2)
+          find images -name '*.png' | xargs -r optipng -o2
+
+      # 3. 提交更改 (如果图片变小了，就提交回去)
+      - name: Commit & Push changes
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          
+          # 检查是否有文件被修改
+          if [[ -n $(git status -s) ]]; then
+            git add images/*
+            git commit -m "📉 Auto Compress Images [skip ci]"
+            git push
+            echo "✅ Images compressed and pushed."
+          else
+            echo "✨ No images needed compression."
+          fi
